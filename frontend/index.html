@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EPL Prediction Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- Chart.js for all visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <!--
+    ============================================================
+    PRODUCTION DEPLOYMENT: Replace the empty string below with
+    your deployed Julia backend URL, e.g.:
+      window.EPL_API_BASE = "https://epl-api.onrender.com/api";
+    For local development, leave it empty — defaults to localhost.
+    ============================================================
+  -->
+  <script>window.EPL_API_BASE = "";</script>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ================================================================ HEADER -->
+  <header class="main-header">
+    <div class="logo">
+      <span class="logo-icon">⚽</span>
+      <h1>EPL <span>Prediction</span> Engine</h1>
+    </div>
+    <div class="server-status">
+      <span class="status-dot offline" id="statusDot"></span>
+      <span id="statusLabel">Connecting to Julia backend…</span>
+    </div>
+  </header>
+
+  <div class="main-content">
+
+    <!-- ============================================================= SIDEBAR -->
+    <nav class="sidebar">
+      <div class="tab-nav">
+        <button class="tab-btn active" data-tab="tab-predict">
+          <span class="tab-icon">🔮</span> Match Predictor
+        </button>
+        <button class="tab-btn" data-tab="tab-betting">
+          <span class="tab-icon">💰</span> Betting EV
+        </button>
+        <button class="tab-btn" data-tab="tab-mc">
+          <span class="tab-icon">🎲</span> Season Simulator
+        </button>
+        <button class="tab-btn" data-tab="tab-elo">
+          <span class="tab-icon">📊</span> ELO Rankings
+        </button>
+      </div>
+      <div class="sidebar-footer">
+        Julia · XGBoost · Bootstrap CI<br/>
+        Monte Carlo · Kelly Criterion
+      </div>
+    </nav>
+
+    <!-- =========================================================== PANELS -->
+    <main class="panel-area">
+
+      <!-- ===================================================== PREDICT TAB -->
+      <section class="tab-panel active" id="tab-predict">
+        <h2 class="panel-title">Match Predictor</h2>
+        <p class="panel-desc">XGBoost model with ELO ratings, rolling form & 95% bootstrap confidence intervals.</p>
+
+        <!-- Team Selection -->
+        <div class="card">
+          <div class="card-title">Select Fixture</div>
+          <div class="team-selectors">
+            <div class="form-group">
+              <label>Home Team</label>
+              <select id="homeTeam"><option value="">— Select team —</option></select>
+            </div>
+            <div class="vs-badge">vs</div>
+            <div class="form-group">
+              <label>Away Team</label>
+              <select id="awayTeam"><option value="">— Select team —</option></select>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="predictBtn">🔮 Predict Match</button>
+            <button class="btn btn-secondary" id="h2hBtn">⚔️ Head to Head</button>
+          </div>
+
+          <!-- Team Stat Cards — populated by app.js on team select -->
+          <div class="team-cards-row">
+            <div class="team-card" id="homeCard">
+              <span style="color:var(--muted);font-size:13px">Select a home team to see stats</span>
+            </div>
+            <div class="team-card" id="awayCard">
+              <span style="color:var(--muted);font-size:13px">Select an away team to see stats</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Prediction Results (hidden until predicted) -->
+        <div class="card hidden" id="predictionPanel">
+          <div class="card-title">Prediction Results</div>
+          <div id="predResult"></div>
+          <div class="chart-wrap" style="margin-top:20px">
+            <canvas id="predictionChart"></canvas>
+          </div>
+        </div>
+
+        <!-- H2H Panel (hidden until requested) -->
+        <div class="card hidden" id="h2hBox"></div>
+      </section>
+
+      <!-- ===================================================== BETTING TAB -->
+      <section class="tab-panel" id="tab-betting">
+        <h2 class="panel-title">Betting Expected Value</h2>
+        <p class="panel-desc">
+          Enter bookmaker decimal odds. We calculate EV vs our model's implied probability,
+          remove the vig, and compute optimal Kelly staking.
+        </p>
+
+        <div class="card">
+          <div class="card-title">Fixture + Bookmaker Odds</div>
+
+          <div class="team-selectors">
+            <div class="form-group">
+              <label>Home Team</label>
+              <select id="betHome"><option value="">— Select team —</option></select>
+            </div>
+            <div class="vs-badge">vs</div>
+            <div class="form-group">
+              <label>Away Team</label>
+              <select id="betAway"><option value="">— Select team —</option></select>
+            </div>
+          </div>
+
+          <div style="margin-top:16px">
+            <div class="card-title" style="margin-bottom:10px">Bookmaker Decimal Odds</div>
+            <div class="odds-grid">
+              <div class="form-group">
+                <label>Home Win</label>
+                <input type="number" id="oddsHome" placeholder="e.g. 2.10" step="0.01" min="1.01" />
+              </div>
+              <div class="form-group">
+                <label>Draw</label>
+                <input type="number" id="oddsDraw" placeholder="e.g. 3.50" step="0.01" min="1.01" />
+              </div>
+              <div class="form-group">
+                <label>Away Win</label>
+                <input type="number" id="oddsAway" placeholder="e.g. 3.80" step="0.01" min="1.01" />
+              </div>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="betBtn">💰 Analyse Betting Value</button>
+          </div>
+        </div>
+
+        <!-- EV Results -->
+        <div class="card hidden" id="evPanel">
+          <div class="card-title">Expected Value Analysis</div>
+          <div id="evResult"></div>
+          <div class="chart-wrap" style="margin-top:20px">
+            <canvas id="evChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Explainer -->
+        <div class="card">
+          <div class="card-title">📖 How EV Works</div>
+          <p style="color:var(--muted);font-size:13px;line-height:1.8">
+            <b style="color:var(--text)">Expected Value (EV)</b> = (Model Probability × Decimal Odds) − 1<br/>
+            A positive EV means the bookmaker is offering better odds than our model suggests — a "value bet".<br/><br/>
+            <b style="color:var(--text)">No-Vig probability</b> removes the bookmaker's margin from their implied odds so the comparison is fair.<br/><br/>
+            <b style="color:var(--text)">Kelly Criterion</b> gives the mathematically optimal fraction of your bankroll to stake.
+            We apply half-Kelly (50%) for safety and cap at 25% of bankroll.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================ MONTE CARLO TAB -->
+      <section class="tab-panel" id="tab-mc">
+        <h2 class="panel-title">Monte Carlo Season Simulator</h2>
+        <p class="panel-desc">
+          Simulates N full EPL seasons using XGBoost match probabilities.
+          Reports expected points, 90% CI, and outcome probabilities per club.
+        </p>
+
+        <div class="card">
+          <div class="card-title">Simulation Settings</div>
+          <div class="mc-controls">
+            <div class="form-group">
+              <label>Number of Simulations</label>
+              <input type="number" id="nSims" value="3000" min="100" max="10000" step="500" style="width:160px" />
+            </div>
+            <button class="btn btn-primary" id="mcBtn">🎲 Run Simulation</button>
+          </div>
+          <p style="color:var(--muted);font-size:12px;margin-top:10px">
+            More simulations = tighter confidence intervals. 3000–5000 is a good balance of speed and accuracy.
+          </p>
+        </div>
+
+        <!-- MC Results -->
+        <div class="card hidden" id="mcPanel">
+          <div class="card-title">Projected Final Standings</div>
+          <p class="mc-meta" id="mcMeta"></p>
+
+          <div class="chart-wrap-tall" style="margin-bottom:24px">
+            <canvas id="mcChart"></canvas>
+          </div>
+
+          <table class="mc-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Team</th>
+                <th>Avg Pts</th>
+                <th>90% CI</th>
+                <th>Avg Pos</th>
+                <th>Title %</th>
+                <th>Top 4 %</th>
+                <th>Top 6 %</th>
+                <th>Rel %</th>
+              </tr>
+            </thead>
+            <tbody id="mcBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Legend -->
+        <div class="card">
+          <div class="card-title">📊 Column Guide</div>
+          <p style="color:var(--muted);font-size:13px;line-height:1.8">
+            <b style="color:var(--text)">Avg Pts</b> — Mean final points across all simulations (±std dev)<br/>
+            <b style="color:var(--text)">90% CI</b> — 5th–95th percentile range of final points<br/>
+            <b style="color:var(--text)">Avg Pos</b> — Average finishing position<br/>
+            <b style="color:var(--green)">Title %</b> — Probability of winning the league<br/>
+            <b style="color:var(--home)">Top 4 %</b> — Champions League qualification probability<br/>
+            <b style="color:var(--purple)">Top 6 %</b> — Europa League qualification probability<br/>
+            <b style="color:var(--away)">Rel %</b> — Relegation probability (bottom 3)
+          </p>
+        </div>
+      </section>
+
+      <!-- ====================================================== ELO TAB -->
+      <section class="tab-panel" id="tab-elo">
+        <h2 class="panel-title">ELO Power Rankings</h2>
+        <p class="panel-desc">
+          ELO ratings computed chronologically over all 9,380 EPL matches (2000–2024).
+          Starting rating 1500, K=20. Higher = stronger historical record.
+        </p>
+
+        <div class="card">
+          <div class="card-title">Current ELO Standings</div>
+          <table class="elo-table">
+            <tbody id="eloBody">
+              <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px">
+                Loading ELO ratings…
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📐 How ELO Works</div>
+          <p style="color:var(--muted);font-size:13px;line-height:1.8">
+            The ELO formula: <code style="background:var(--bg);padding:2px 6px;border-radius:4px">E(home) = 1 / (1 + 10^((Ra−Rh)/400))</code><br/><br/>
+            After each match, ratings update by K×(actual − expected). K=20 means each result
+            can shift a rating by at most 20 points. The system naturally rewards beating
+            stronger opponents and punishes losing to weaker ones.<br/><br/>
+            These ELO values feed directly into the XGBoost model as <b>EloHome</b> and <b>EloAway</b> features.
+          </p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- Load JS modules -->
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

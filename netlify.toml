@@ -1,0 +1,27 @@
+# =============================================================================
+# netlify.toml — Netlify Deployment Config
+# Place this in the ROOT of your GitHub repository
+# =============================================================================
+
+[build]
+  # Tell Netlify where your frontend files are
+  publish = "frontend"
+  # No build command needed — it's pure HTML/CSS/JS
+  command = ""
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# Redirect all routes to index.html (single-page app behaviour)
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"

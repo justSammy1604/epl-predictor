@@ -1,0 +1,21 @@
+# =============================================================================
+# railway.toml — Railway.app Deployment Config
+# Place this in the ROOT of your GitHub repository
+# Railway reads this on every deployment
+# =============================================================================
+
+[build]
+# Railway auto-detects the Dockerfile in ./backend
+dockerfilePath = "backend/Dockerfile"
+dockerContext   = "backend"
+
+[deploy]
+# The port your Julia server binds to
+# Railway injects $PORT env var — our server.jl reads it (see note below)
+startCommand   = "julia --threads=auto --project=. server.jl"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 180   # Julia startup takes ~2 min on first run
+
+# Restart policy — restart on crash, max 3 times
+restartPolicyType    = "ON_FAILURE"
+restartPolicyMaxRetries = 3

@@ -1,0 +1,30 @@
+# =============================================================================
+# render.yaml — Render.com Deployment Config
+# Place this file in the ROOT of your GitHub repository
+# Render auto-detects it on push
+# =============================================================================
+
+services:
+  - type: web
+    name: epl-prediction-api
+    runtime: docker
+    # Tell Render where the Dockerfile lives (relative to repo root)
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+
+    # Plan: Free tier works but will spin down after 15 min of inactivity
+    # Upgrade to Starter ($7/mo) to keep it always-on
+    plan: free
+
+    # Port your Julia server listens on
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: JULIA_NUM_THREADS
+        value: "2"
+
+    # Health check path — Render polls this to confirm deployment succeeded
+    healthCheckPath: /api/health
+
+    # Auto-deploy on every push to main branch
+    autoDeploy: true
