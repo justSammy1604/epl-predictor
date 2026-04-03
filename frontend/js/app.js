@@ -9,16 +9,70 @@ import * as API    from "./api.js";
 import * as Charts from "./charts.js";
 
 // =============================================================================
-// STATE
+// STATE & LOCAL STORAGE
 // =============================================================================
 let TEAMS     = [];
 let serverOK  = false;
+
+// localStorage keys
+const STORAGE_KEYS = {
+  homeTeam: "epl_homeTeam",
+  awayTeam: "epl_awayTeam",
+  betHome: "epl_betHome",
+  betAway: "epl_betAway",
+  oddsHome: "epl_oddsHome",
+  oddsDraw: "epl_oddsDraw",
+  oddsAway: "epl_oddsAway",
+  mcTeams: "epl_mcTeams",
+  mcSims: "epl_mcSims",
+};
+
+// Save user data to localStorage
+function saveUserData(key, value) {
+  try {
+    localStorage[STORAGE_KEYS[key]] = value;
+  } catch (e) {
+    console.warn("localStorage save failed:", e);
+  }
+}
+
+// Load user data from localStorage
+function loadUserData(key, defaultValue = "") {
+  try {
+    return localStorage[STORAGE_KEYS[key]] || defaultValue;
+  } catch (e) {
+    console.warn("localStorage load failed:", e);
+    return defaultValue;
+  }
+}
+
+// Restore all saved form values
+function restoreSavedData() {
+  const fields = [
+    { id: "homeTeam", key: "homeTeam" },
+    { id: "awayTeam", key: "awayTeam" },
+    { id: "betHome", key: "betHome" },
+    { id: "betAway", key: "betAway" },
+    { id: "oddsHome", key: "oddsHome" },
+    { id: "oddsDraw", key: "oddsDraw" },
+    { id: "oddsAway", key: "oddsAway" },
+  ];
+  
+  fields.forEach(({ id, key }) => {
+    const el = document.getElementById(id);
+    if (el) {
+      const saved = loadUserData(key);
+      if (saved) el.value = saved;
+    }
+  });
+}
 
 // =============================================================================
 // INIT
 // =============================================================================
 document.addEventListener("DOMContentLoaded", async () => {
   await checkServer();
+  restoreSavedData();
   setupTabs();
   setupPredictTab();
   setupBettingTab();
@@ -100,8 +154,14 @@ function setupTabs() {
 // =============================================================================
 function setupPredictTab() {
   document.getElementById("predictBtn").addEventListener("click", runPrediction);
-  document.getElementById("h2hBtn").addEventListener("click", loadH2H);
-  document.getElementById("homeTeam").addEventListener("change", loadTeamCard.bind(null, "home"));
+  document.getElementById("h2hBtn").addEventListener("click", loa(e) => {
+    saveUserData("homeTeam", e.target.value);
+    loadTeamCard("home");
+  });
+  document.getElementById("awayTeam").addEventListener("change", (e) => {
+    saveUserData("awayTeam", e.target.value);
+    loadTeamCard("away");
+  });
   document.getElementById("awayTeam").addEventListener("change", loadTeamCard.bind(null, "away"));
 }
 
@@ -137,9 +197,7 @@ function renderPrediction(d) {
 
   document.getElementById("predResult").innerHTML = `
     <div class="result-badge">${winner === "Draw" ? "⚖️ Draw" : "🏆 " + winner}</div>
-    <div class="pred-probs">
-      ${probCard(d.home_team, d.home_win, ci?.home_win, "home")}
-      ${probCard("Draw",      d.draw,     ci?.draw,     "draw")}
+    <d${probCard("Draw",      d.draw,     ci?.draw,     "draw")}
       ${probCard(d.away_team, d.away_win, ci?.away_win, "away")}
     </div>
     <div class="meta-row">
@@ -222,9 +280,35 @@ async function loadTeamCard(side) {
 // =============================================================================
 function setupBettingTab() {
   document.getElementById("betBtn").addEventListener("click", runBettingEV);
+  document.getElementById("betHome").addEventListener("change", (e) => {
+    saveUserData("betHome", e.target.value);
+  });
+  document.getElementById("betAway").addEventListener("change", (e) => {
+    saveUserData("betAway", e.target.value);
+  });
+  document.getElementById("oddsHome").addEventListener("change", (e) => {
+    saveUserData("oddsHome", e.target.value);
+  });
+  document.getElementById("oddsDraw").addEventListener("change", (e) => {
+    saveUserData("oddsDraw", e.target.value);
+  });
+  document.getElementById("oddsAway").addEventListener("change", (e) => {
+    saveUserData("oddsAway", e.target.value);
+  });
 }
 
-async function runBettingEV() {
+// =============================================================================
+// MONTE CARLO TAB
+// =============================================================================
+function setupMonteCarloTab() {
+  document.getElementById("mcBtn").addEventListener("click", runMonteCarlo);
+  const nSimsEl = document.getElementById("nSims");
+  if (nSimsEl) {
+    nSimsEl.addEventListener("change", (e) => {
+      saveUserData("mcSims", e.target.value);
+    });
+  }
+}
   if (!serverOK) return toast("Backend offline", "error");
 
   const home     = document.getElementById("betHome").value;
@@ -298,6 +382,12 @@ function renderBettingEV(d) {
 // =============================================================================
 function setupMonteCarloTab() {
   document.getElementById("mcBtn").addEventListener("click", runMonteCarlo);
+  const nSimsEl = document.getElementById("nSims");
+  if (nSimsEl) {
+    nSimsEl.addEventListener("change", (e) => {
+      saveUserData("mcSims", e.target.value);
+    });
+  }
 }
 
 async function runMonteCarlo() {

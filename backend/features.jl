@@ -8,15 +8,14 @@ module Features
 
 using DataFrames, Statistics, StatsBase, Dates
 
-export compute_elo!, compute_rolling_averages!, build_feature_matrix,
+export compute_elo!, compute_yellow_cards!, build_feature_matrix,
        get_team_stats, get_all_team_stats, FEATURE_COLS
 
 # Features the XGBoost model is trained on — must match model.jl exactly
 const FEATURE_COLS = [
     :AwayShotsOnTarget, :HomeShotsOnTarget,
     :HalfTimeHomeGoals, :HalfTimeAwayGoals,
-    :EloHome, :EloAway,
-    :HomeRecentGoals, :AwayRecentGoals,
+    :HomeYellowCards, :AwayYellowCards,
     :HomeCorners, :AwayCorners
 ]
 
@@ -59,42 +58,35 @@ function compute_elo!(df::DataFrame; K::Float64 = 20.0, start_rating::Float64 = 
 end
 
 # -----------------------------------------------------------------------------
-# Rolling Average of Goals (last 5 games per team)
-# Captures recent form — key predictive signal for the XGBoost model
+# Yellow Cards Computation
+# Computes average yellow cards per team for home and away games
+# Used as a feature for match predictions
 # -----------------------------------------------------------------------------
-function compute_rolling_averages!(df::DataFrame; window::Int = 5)
-    df.HomeRecentGoals = zeros(Float64, nrow(df))
-    df.AwayRecentGoals = zeros(Float64, nrow(df))
+function compute_yellow_cards!(df::DataFrame; window::Int = 5)
+    df.HomeYellowCards = zeros(Float64, nrow(df))
+    df.AwayYellowCards = zeros(Float64, nrow(df))
 
     for i in 1:nrow(df)
         home_team = df.HomeTeam[i]
         away_team = df.AwayTeam[i]
         prev = df[1:i-1, :]
 
-        # Home recent goals
-        home_games = prev[(prev.HomeTeam .== home_team) .| (prev.AwayTeam .== home_team), :]
+        # Home yellow cards (when team plays at home)
+        home_games = prev[prev.HomeTeam .== home_team, :]
         if nrow(home_games) > 0
-            home_goal_series = [
-                r.HomeTeam == home_team ? r.FullTimeHomeGoals : r.FullTimeAwayGoals
-                for r in eachrow(home_games)
-            ]
-            n = min(window, length(home_goal_series))
-            df.HomeRecentGoals[i] = mean(last(home_goal_series, n))
+            n = min(window, nrow(home_games))
+            df.HomeYellowCards[i] = mean(last(home_games.HomeYellowCards, n))
         else
-            df.HomeRecentGoals[i] = 1.35  # EPL average home goals
+            df.HomeYellowCards[i] = 2.0  # Default EPL average
         end
 
-        # Away recent goals
-        away_games = prev[(prev.HomeTeam .== away_team) .| (prev.AwayTeam .== away_team), :]
+        # Away yellow cards (when team plays away)
+        away_games = prev[prev.AwayTeam .== away_team, :]
         if nrow(away_games) > 0
-            away_goal_series = [
-                r.AwayTeam == away_team ? r.FullTimeAwayGoals : r.FullTimeHomeGoals
-                for r in eachrow(away_games)
-            ]
-            n = min(window, length(away_goal_series))
-            df.AwayRecentGoals[i] = mean(last(away_goal_series, n))
+            n = min(window, nrow(away_games))
+            df.AwayYellowCards[i] = mean(last(away_games.AwayYellowCards, n))
         else
-            df.AwayRecentGoals[i] = 1.10  # EPL average away goals
+            df.AwayYellowCards[i] = 2.0  # Default EPL average
         end
     end
 end

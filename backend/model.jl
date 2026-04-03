@@ -44,11 +44,8 @@ function train_model!(data_path::String)
     df = CSV.read(data_path, DataFrame)
     df.MatchDate = Date.(df.MatchDate)
 
-    @info "Computing ELO ratings ($(nrow(df)) matches)..."
-    current_elo = Features.compute_elo!(df)
-
-    @info "Computing rolling averages..."
-    Features.compute_rolling_averages!(df)
+    @info "Computing yellow cards statistics ($(nrow(df)) matches)..."
+    Features.compute_yellow_cards!(df)
 
     df.Result = categorical(df.FullTimeResult)
 
@@ -93,7 +90,6 @@ function train_model!(data_path::String)
 
     # Populate global state
     STATE.mach = mach
-    STATE.current_elo = current_elo
     STATE.df = df
     STATE.teams = sort(unique(vcat(df.HomeTeam, df.AwayTeam)))
     STATE.is_trained = true
@@ -109,13 +105,11 @@ function load_or_train_model(data_path::String)
             # We still need the processed df for feature lookup
             df = CSV.read(data_path, DataFrame)
             df.MatchDate = Date.(df.MatchDate)
-            current_elo = Features.compute_elo!(df)
-            Features.compute_rolling_averages!(df)
+            Features.compute_yellow_cards!(df)
             df.Result = categorical(df.FullTimeResult)
 
             mach = machine(MODEL_PATH)
             STATE.mach = mach
-            STATE.current_elo = current_elo
             STATE.df = df
             STATE.teams = sort(unique(vcat(df.HomeTeam, df.AwayTeam)))
             STATE.is_trained = true
@@ -137,8 +131,19 @@ function predict_match(home_team::String, away_team::String)
     @assert STATE.is_trained "Model not trained — call load_or_train_model first"
     df = STATE.df
 
-    home_stats = Features.get_team_stats(df, home_team, STATE.current_elo)
-    away_stats = Features.get_team_stats(df, away_team, STATE.current_elo)
+    # Get team stats (contains historical averages)
+    home_stats = Features.get_team_stats(df, home_team, Dict())
+    away_stats = Features.get_team_stats(df, away_team, Dict())
+
+    # Compute home yellow cards (average from last 5 home games)
+    home_games = df[df.HomeTeam .== home_team, :]
+    home_yellow = nrow(home_games) > 0 ? 
+        mean(last(home_games.HomeYellowCards, min(5, nrow(home_games)))) : 2.0
+
+    # Compute away yellow cards (average from last 5 away games)
+    away_games = df[df.AwayTeam .== away_team, :]
+    away_yellow = nrow(away_games) > 0 ? 
+        mean(last(away_games.AwayYellowCards, min(5, nrow(away_games)))) : 2.0
 
     # Build input row matching FEATURE_COLS order exactly
     input = DataFrame(
@@ -146,10 +151,8 @@ function predict_match(home_team::String, away_team::String)
         HomeShotsOnTarget = [home_stats.avg_home_sot],
         HalfTimeHomeGoals = [home_stats.avg_home_ht_goals],
         HalfTimeAwayGoals = [away_stats.avg_away_ht_goals],
-        EloHome = [home_stats.elo],
-        EloAway = [away_stats.elo],
-        HomeRecentGoals = [home_stats.home_recent_goals],
-        AwayRecentGoals = [away_stats.away_recent_goals],
+        HomeYellowCards = [home_yellow],
+        AwayYellowCards = [away_yellow],
         HomeCorners = [home_stats.avg_home_corners],
         AwayCorners = [away_stats.avg_away_corners]
     )
@@ -164,10 +167,6 @@ function predict_match(home_team::String, away_team::String)
         home_win  = get(probs, "H", 0.0),
         draw      = get(probs, "D", 0.0),
         away_win  = get(probs, "A", 0.0),
-        elo_home  = home_stats.elo,
-        elo_away  = away_stats.elo,
-        home_form = home_stats.home_recent_goals,
-        away_form = away_stats.away_recent_goals,
     )
 end
 
@@ -199,10 +198,6 @@ function predict_with_confidence(
             home_win_ci = (max(0.0, pt.home_win - ci_width), min(1.0, pt.home_win + ci_width)),
             draw_ci     = (max(0.0, pt.draw - ci_width),     min(1.0, pt.draw + ci_width)),
             away_win_ci = (max(0.0, pt.away_win - ci_width), min(1.0, pt.away_win + ci_width)),
-            elo_home  = pt.elo_home,
-            elo_away  = pt.elo_away,
-            home_form = pt.home_form,
-            away_form = pt.away_form,
             n_bootstrap = 0,
             note = "Small sample — CI widened heuristically"
         )
@@ -229,10 +224,8 @@ function predict_with_confidence(
             HomeShotsOnTarget = [mean(hrows.HomeShotsOnTarget)],
             HalfTimeHomeGoals = [mean(hrows.HalfTimeHomeGoals)],
             HalfTimeAwayGoals = [mean(arows.HalfTimeAwayGoals)],
-            EloHome           = [get(STATE.current_elo, home_team, 1500.0) + randn() * 30.0],
-            EloAway           = [get(STATE.current_elo, away_team, 1500.0) + randn() * 30.0],
-            HomeRecentGoals   = [mean(hrows.HomeRecentGoals)],
-            AwayRecentGoals   = [mean(arows.AwayRecentGoals)],
+            HomeYellowCards   = [mean(hrows.HomeYellowCards)],
+            AwayYellowCards   = [mean(arows.AwayYellowCards)],
             HomeCorners       = [mean(hrows.HomeCorners)],
             AwayCorners       = [mean(arows.AwayCorners)]
         )
@@ -256,10 +249,6 @@ function predict_with_confidence(
         home_win_ci = ci(home_probs),
         draw_ci     = ci(draw_probs),
         away_win_ci = ci(away_probs),
-        elo_home  = get(STATE.current_elo, home_team, 1500.0),
-        elo_away  = get(STATE.current_elo, away_team, 1500.0),
-        home_form = mean(last(home_rows_all, 5).HomeRecentGoals),
-        away_form = mean(last(away_rows_all, 5).AwayRecentGoals),
         n_bootstrap = n_bootstrap,
         note = "95% bootstrap CI over $n_bootstrap samples"
     )
