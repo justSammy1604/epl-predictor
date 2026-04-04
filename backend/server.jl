@@ -126,10 +126,6 @@ function handle_predict(req)
                     "away_win" => Dict("low" => round(r.away_win_ci[1], digits=4),
                                        "high" => round(r.away_win_ci[2], digits=4)),
                 ),
-                "elo_home"   => round(r.elo_home, digits=1),
-                "elo_away"   => round(r.elo_away, digits=1),
-                "home_form"  => round(r.home_form, digits=2),
-                "away_form"  => round(r.away_form, digits=2),
                 "n_bootstrap"=> r.n_bootstrap,
                 "note"       => r.note,
                 "predicted_result" => r.home_win > r.away_win && r.home_win > r.draw ? "Home Win" :
@@ -143,8 +139,6 @@ function handle_predict(req)
                 "home_win"  => round(r.home_win, digits=4),
                 "draw"      => round(r.draw, digits=4),
                 "away_win"  => round(r.away_win, digits=4),
-                "elo_home"  => round(r.elo_home, digits=1),
-                "elo_away"  => round(r.elo_away, digits=1),
                 "predicted_result" => r.home_win > r.away_win && r.home_win > r.draw ? "Home Win" :
                                       r.away_win > r.home_win && r.away_win > r.draw ? "Away Win" : "Draw"
             ))

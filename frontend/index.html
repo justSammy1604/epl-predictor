@@ -53,8 +53,8 @@
         </button>
       </div>
       <div class="sidebar-footer">
-        Julia · XGBoost · Bootstrap CI<br/>
-        Monte Carlo · Kelly Criterion
+        Julia · XGBoost · Yellow Cards<br/>
+        Monte Carlo · localStorage Persistence
       </div>
     </nav>
 
@@ -64,7 +64,7 @@
       <!-- ===================================================== PREDICT TAB -->
       <section class="tab-panel active" id="tab-predict">
         <h2 class="panel-title">Match Predictor</h2>
-        <p class="panel-desc">XGBoost model with ELO ratings, rolling form & 95% bootstrap confidence intervals.</p>
+        <p class="panel-desc">XGBoost model using shots on target, half-time goals, yellow cards, and corners with 95% bootstrap confidence intervals.</p>
 
         <!-- Team Selection -->
         <div class="card">
@@ -244,31 +244,32 @@
 
       <!-- ====================================================== ELO TAB -->
       <section class="tab-panel" id="tab-elo">
-        <h2 class="panel-title">ELO Power Rankings</h2>
+        <h2 class="panel-title">Team Rankings</h2>
         <p class="panel-desc">
-          ELO ratings computed chronologically over all 9,380 EPL matches (2000–2024).
-          Starting rating 1500, K=20. Higher = stronger historical record.
+          Team performance summary based on historical statistics from all EPL matches in the dataset.
+          Rankings reflect overall performance across home and away matches.
         </p>
 
         <div class="card">
-          <div class="card-title">Current ELO Standings</div>
+          <div class="card-title">Current Team Standings</div>
           <table class="elo-table">
             <tbody id="eloBody">
               <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px">
-                Loading ELO ratings…
+                Loading team rankings…
               </td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="card">
-          <div class="card-title">📐 How ELO Works</div>
+          <div class="card-title">📊 Model Features</div>
           <p style="color:var(--muted);font-size:13px;line-height:1.8">
-            The ELO formula: <code style="background:var(--bg);padding:2px 6px;border-radius:4px">E(home) = 1 / (1 + 10^((Ra−Rh)/400))</code><br/><br/>
-            After each match, ratings update by K×(actual − expected). K=20 means each result
-            can shift a rating by at most 20 points. The system naturally rewards beating
-            stronger opponents and punishes losing to weaker ones.<br/><br/>
-            These ELO values feed directly into the XGBoost model as <b>EloHome</b> and <b>EloAway</b> features.
+            The XGBoost prediction model uses the following match statistics as features:<br/><br/>
+            <b style="color:var(--text)">Shots on Target</b> — Away and Home shots on target (shooting quality)<br/>
+            <b style="color:var(--text)">Half-Time Goals</b> — Goals scored in first 45 minutes (early match intensity)<br/>
+            <b style="color:var(--text)">Yellow Cards</b> — Away and Home yellow cards (playing style/discipline)<br/>
+            <b style="color:var(--text)">Corners</b> — Away and Home corners (attacking pressure)<br/><br/>
+            These features capture team form, attacking threat, defensive discipline, and match dynamics to predict final outcomes.
           </p>
         </div>
       </section>
