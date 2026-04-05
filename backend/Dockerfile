@@ -1,47 +1,36 @@
 # =============================================================================
-# Dockerfile — EPL Prediction Engine Julia Backend
-# Strategy: Instantiate only (no resolve/precompile in Docker)
-#           Manifest should be pre-generated and committed with Project.toml
+# Dockerfile — EPL Prediction Engine Julia Backend (Simplified & Robust)
 # =============================================================================
 
 FROM julia:1.10-bullseye
 
 WORKDIR /app
 
-# Install system dependencies (XGBoost, OpenMP)
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libgomp1 \
     libomp-dev \
-    git \
     curl \
-    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Project.toml and Manifest.toml
-# Both files must exist and be in sync for reliable Docker builds
-COPY Project.toml Manifest.toml* ./
+# Copy Project.toml and Manifest.toml (both required)
+COPY Project.toml Manifest.toml ./
 
-# Instantiate ONLY — no resolve/precompile
-# If Manifest.toml exists, this just downloads packages
-# If only Project.toml exists, Julia will try to resolve (avoid this)
-RUN julia --project=. -e " \
-    using Pkg; \
-    Pkg.instantiate(verbose=true); \
-    println(\"Packages instantiated successfully\") \
-" || { echo 'ERROR: Package instantiation failed. Ensure Manifest.toml is committed.'; exit 1; }
+# Instantiate packages from locked Manifest.toml
+# This is fast (2-3 min) and reliable — no resolve/registry calls
+RUN julia --project=. -e "using Pkg; Pkg.instantiate()" && \
+    echo "✓ Packages instantiated successfully"
 
-# Copy source code
+# Copy source code and data
 COPY *.jl ./
-
-# Copy dataset
 COPY data/ ./data/
 
 EXPOSE 8080
 
-# Extended health check for JIT compilation on first boot
-HEALTHCHECK --interval=30s --timeout=20s --start-period=900s --retries=5 \
-    CMD curl -sf http://localhost:8080/api/health > /dev/null || exit 1
+# Health check with generous startup window for JIT compilation
+HEALTHCHECK --interval=30s --timeout=30s --start-period=900s --retries=3 \
+    CMD curl -sf http://localhost:8080/api/health >/dev/null 2>&1 || exit 1
 
-# Run with multiple threads for Monte Carlo performance
+# Start server with multi-threading
 CMD ["julia", "--threads=auto", "--project=.", "server.jl"]
