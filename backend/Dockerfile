@@ -1,53 +1,47 @@
 # =============================================================================
 # Dockerfile — EPL Prediction Engine Julia Backend
-# Used by: Render (Docker environment) and Railway (auto-detected)
+# Strategy: Instantiate only (no resolve/precompile in Docker)
+#           Manifest should be pre-generated and committed with Project.toml
 # =============================================================================
 
-# Use the official Julia 1.10 image (LTS, stable)
 FROM julia:1.10-bullseye
 
-# Set working directory inside the container
 WORKDIR /app
 
-# Install system dependencies needed by some Julia packages
-# (XGBoost and HTTP.jl need these at compile time)
+# Install system dependencies (XGBoost, OpenMP)
 RUN apt-get update && apt-get install -y \
     build-essential \
     libgomp1 \
     libomp-dev \
     git \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files first (layer caching — only re-runs if deps change)
-COPY Project.toml ./
+# Copy Project.toml and Manifest.toml
+# Both files must exist and be in sync for reliable Docker builds
+COPY Project.toml Manifest.toml* ./
 
-# Instantiate packages WITHOUT precompilation
-# (XGBoost precompilation in Docker often fails; let it compile on first startup)
-# Update registry first to ensure all packages can be found, then instantiate
-# This download step is fast (~2-3 min) and reliable
+# Instantiate ONLY — no resolve/precompile
+# If Manifest.toml exists, this just downloads packages
+# If only Project.toml exists, Julia will try to resolve (avoid this)
 RUN julia --project=. -e " \
     using Pkg; \
-    Pkg.Registry.update(); \
-    Pkg.instantiate(); \
-    println(\"All packages downloaded successfully - ready to start\") \
-"
+    Pkg.instantiate(verbose=true); \
+    println(\"Packages instantiated successfully\") \
+" || { echo 'ERROR: Package instantiation failed. Ensure Manifest.toml is committed.'; exit 1; }
 
-# Copy source files
+# Copy source code
 COPY *.jl ./
 
-# Copy the dataset
+# Copy dataset
 COPY data/ ./data/
 
-# Expose the API port
 EXPOSE 8080
 
-# Health check — lets Render/Railway know the container is alive
-# On first startup, packages are compiled JIT (just-in-time) which can take 5-10 min
-# The start-period allows this compilation window before failing the check
-HEALTHCHECK --interval=30s --timeout=15s --start-period=600s --retries=5 \
-    CMD curl -f http://localhost:8080/api/health || exit 1
+# Extended health check for JIT compilation on first boot
+HEALTHCHECK --interval=30s --timeout=20s --start-period=900s --retries=5 \
+    CMD curl -sf http://localhost:8080/api/health > /dev/null || exit 1
 
-# Start the server
-# --threads=auto uses all available CPU cores (important for Monte Carlo)
+# Run with multiple threads for Monte Carlo performance
 CMD ["julia", "--threads=auto", "--project=.", "server.jl"]
