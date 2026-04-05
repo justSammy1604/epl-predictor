@@ -24,12 +24,13 @@ COPY Project.toml ./
 
 # Instantiate packages WITHOUT precompilation
 # (XGBoost precompilation in Docker often fails; let it compile on first startup)
-# This download step is fast (~1-2 min) and reliable
+# Update registry first to ensure all packages can be found, then instantiate
+# This download step is fast (~2-3 min) and reliable
 RUN julia --project=. -e " \
     using Pkg; \
-    Pkg.resolve(); \
+    Pkg.Registry.update(); \
     Pkg.instantiate(); \
-    println(\"All packages downloaded and resolved successfully\") \
+    println(\"All packages downloaded successfully - ready to start\") \
 "
 
 # Copy source files
