@@ -14,13 +14,17 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Project.toml and Manifest.toml (both required)
-COPY Project.toml Manifest.toml ./
+# Copy only Project.toml first (Manifest will be generated in Docker)
+COPY Project.toml ./
 
-# Instantiate packages from locked Manifest.toml
-# This is fast (2-3 min) and reliable — no resolve/registry calls
-RUN julia --project=. -e "using Pkg; Pkg.instantiate()" && \
-    echo "✓ Packages instantiated successfully"
+# Resolve dependencies explicitly and generate Manifest.toml in Docker
+# This ensures Manifest matches the Docker's Julia 1.10 version
+RUN julia --project=. -e "using Pkg; Pkg.resolve()" && \
+    echo "✓ Dependencies resolved"
+
+# Instantiate WITHOUT auto-precompile (packages compile JIT at startup)
+RUN julia --project=. -e "using Pkg; Pkg.instantiate(allow_autoprecomp=false)" && \
+    echo "✓ Packages downloaded — ready to start"
 
 # Copy source code and data
 COPY *.jl ./
