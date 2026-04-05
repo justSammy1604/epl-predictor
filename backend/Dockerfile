@@ -14,6 +14,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     libgomp1 \
+    libomp-dev \
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -21,14 +22,14 @@ RUN apt-get update && apt-get install -y \
 # Copy dependency files first (layer caching — only re-runs if deps change)
 COPY Project.toml ./
 
-# Generate Manifest.toml by resolving + precompiling all packages
-# This is the slow step (~5-10 min on first build, cached after that)
+# Instantiate packages WITHOUT precompilation
+# (XGBoost precompilation in Docker often fails; let it compile on first startup)
+# This download step is fast (~1-2 min) and reliable
 RUN julia --project=. -e " \
     using Pkg; \
     Pkg.resolve(); \
     Pkg.instantiate(); \
-    Pkg.precompile(); \
-    println(\"All packages compiled successfully\") \
+    println(\"All packages downloaded and resolved successfully\") \
 "
 
 # Copy source files
@@ -41,7 +42,9 @@ COPY data/ ./data/
 EXPOSE 8080
 
 # Health check — lets Render/Railway know the container is alive
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+# On first startup, packages are compiled JIT (just-in-time) which can take 5-10 min
+# The start-period allows this compilation window before failing the check
+HEALTHCHECK --interval=30s --timeout=15s --start-period=600s --retries=5 \
     CMD curl -f http://localhost:8080/api/health || exit 1
 
 # Start the server
