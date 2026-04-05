@@ -1,18 +1,19 @@
 # =============================================================================
-# Dockerfile — EPL Prediction Engine Julia Backend (Memory-Optimized)
+# Dockerfile — EPL Prediction Engine Julia Backend
 # =============================================================================
 
-FROM julia:1.10-slim
+FROM julia:1.10-bullseye
 
 WORKDIR /app
 
-# Minimal system dependencies for slim image
+# Minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
     libomp-dev \
     curl \
     ca-certificates \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Copy only Project.toml
